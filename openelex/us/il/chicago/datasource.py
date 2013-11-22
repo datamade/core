@@ -11,6 +11,7 @@ from datetime import date
 from operator import itemgetter
 from itertools import groupby
 import csv
+import json
 
 # from openelex.api import elections as elec_api
 from openelex.base.datasource import BaseDatasource
@@ -19,15 +20,15 @@ class Datasource(BaseDatasource):
 
     base_url = "https://www.chicagoelections.com"
     working_dir = os.path.abspath(os.path.dirname(__file__))
-    mappings_dir = os.path.join(self.working_dir, 'mappings')
+    mappings_dir = os.path.join(working_dir, 'mappings')
 
     # PUBLIC INTERFACE
-    def contest_urls(self, election=None, year=None):
+    def results_urls(self, election=None, year=None):
         """ 
-        Get a list of contest URLs optionally filtered by election or year
+        Get a list of results URLs optionally filtered by election or year
         """
-        if not hasattr(self, '_contest_urls'):
-            self._contest_urls = {}
+        if not hasattr(self, '_results_urls'):
+            self._results_urls = {}
             self._voters_urls = {}
             self._ballots_urls = {}
             if year and election:
@@ -45,9 +46,9 @@ class Datasource(BaseDatasource):
                 for year, elex in mappings.items():
                     elections.extend([(e['name'], e['url'], e['year'], e['election_id']) for e in elex])
             for name, url, year, election_id in elections:
-                if not self._contest_urls.has_key(year):
-                    self._contest_urls[year] = {}
-                self._contest_urls[year][name] = {'election_id': election_id, 'contests': []}
+                if not self._results_urls.has_key(year):
+                    self._results_urls[year] = {}
+                self._results_urls[year][name] = {'election_id': election_id, 'results': []}
                 if not self._voters_urls.has_key(year):
                     self._voters_urls[year] = {}
                 self._voters_urls[year][name] = {'election_id': election_id, 'voters': []}
@@ -58,8 +59,8 @@ class Datasource(BaseDatasource):
                     page = self._scraper.urlopen(url)
                     for option in self.get_select_options(page):
                         payload = {'D3' : option, 'flag' : 1, 'B1' : '  View the Results'}
-                        contests = self._scraper.urlopen(url, 'POST', payload)
-                        soup = BeautifulSoup(contests)
+                        results = self._scraper.urlopen(url, 'POST', payload)
+                        soup = BeautifulSoup(results)
                         links = ['%s/%s' % (self.base_url, a['href']) for a in soup.findAll('a')]
                         # cache the junk
                         for link in links:
@@ -69,9 +70,8 @@ class Datasource(BaseDatasource):
                         elif 'ballots' in option.lower():
                             self._ballots_urls[year][name]['ballots'].extend(links)
                         else:
-                            self._contest_urls[year][name]['contests'].extend(links)
-                        print self._contest_urls[year].keys()
-        return self._contest_urls
+                            self._results_urls[year][name]['results'].append({'contest_name': option, 'results_links': links})
+        return self._results_urls
 
     def voters_urls(self, election=None, year=None):
         if not hasattr(self, '_voters_urls'):
@@ -88,13 +88,17 @@ class Datasource(BaseDatasource):
             self._elections = {}
             date_file = os.path.join(self.working_dir, 'election_dates.csv')
             election_dates = list(csv.DictReader(open(date_file, 'rb')))
-            with_years = [{'year': d['Date'].split('-')[0], 
-                           'date': d['Date'], 
-                           'name': d['Election'],
-                           'url': d['URL'],
-                           'ocd_id': 'ocd-division/country:us/state:il/place:chicago',
-                           'election_id': '-'.join(d['Election'].replace(',', '').split(' '))}
-                          for d in election_dates]
+            with_years = []
+            for e_date in election_dates:
+                d = {}
+                d['year'] = e_date['Date'].split('-')[0]
+                d['date'] = e_date['Date']
+                d['name'] = e_date['Election']
+                d['url'] = e_date['URL']
+                d['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago'
+                election_id = '-'.join(e_date['Election'].lower().replace(',', '').split(' '))
+                d['election_id'] = 'il-%s-%s' % (e_date['Date'], election_id)
+                with_years.append(d)
             with_years = sorted(with_years, key=itemgetter('year'))
             for y, group in groupby(with_years, key=itemgetter('year')):
                 self._elections[y] = list(group)
@@ -106,16 +110,23 @@ class Datasource(BaseDatasource):
     def mappings(self, year=None, election=None):
         d = {}
         elections = self.elections(year=year)
-        contests = self.contest_urls(year=year, election=election)
+        results = self.results_urls(year=year, election=election)
         ballots = self.ballots_urls(year=year, election=election)
         voters = self.voters_urls(year=year, election=election)
         for year, elex in elections.items():
             d[year] = []
-            for election in elex:
-                election['contests'] = contests[election['year']][election['name']]['contests']
-                election['voters'] = voters[election['year']][election['name']]['voters']
-                election['ballots'] = ballots[election['year']][election['name']]['ballots']
-                d[year].append(election) 
+            for elec in elex:
+                if election and elec['name'] == election:
+                    elec['results'] = results[elec['year']][elec['name']]['results']
+                    elec['voters'] = voters[elec['year']][elec['name']]['voters']
+                    elec['ballots'] = ballots[elec['year']][elec['name']]['ballots']
+                    d[year].append(elec) 
+                    break
+                else:
+                    elec['results'] = results[elec['year']][elec['name']]['results']
+                    elec['voters'] = voters[elec['year']][elec['name']]['voters']
+                    elec['ballots'] = ballots[elec['year']][elec['name']]['ballots']
+                    d[year].append(elec) 
         f = open(os.path.join(self.mappings_dir, 'filenames.json'), 'w')
         f.write(json.dumps(d))
         f.close()
