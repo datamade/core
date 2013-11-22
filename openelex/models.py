@@ -53,6 +53,7 @@ class Result(EmbeddedDocument):
         'state_legislative',
         'precinct',
         'parish',
+        'ward',
         'precinct',
         'county',
         'state',
