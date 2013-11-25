@@ -7,9 +7,9 @@ from nameparser import HumanName
 import csv
 import unicodecsv
 
-from .state import StateBase
+from .place import PlaceBase
 
-class BaseLoader(StateBase):
+class BaseLoader(PlaceBase):
     """
     Base class for loading results data into MongoDB
     Intended to be subclassed in state-specific load.py modules.

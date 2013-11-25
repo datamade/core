@@ -11,15 +11,15 @@ class PlaceBase(object):
     """
 
     def __init__(self, state='', place=''):
-        if not state:
-            self.state = self.__module__.split('.')[-2]
-        else:
-            self.state = state
         if not place:
-            self.place = self.__module__.split('.')
+            self.place = self.__module__.split('.')[-2]
         else:
-           self.place = place
-        # Save files to cache/ dir inside state directory
+            self.place = place
+        if not state:
+            self.state = self.__module__.split('.')[-3]
+        else:
+           self.state = state
+        # Save files to dir inside place directory
         self.cache_dir = os.path.join(COUNTRY_DIR, self.state, self.place, 'cache')
         self.mappings_dir = os.path.join(COUNTRY_DIR, self.state, self.place, 'mappings')
         try:
