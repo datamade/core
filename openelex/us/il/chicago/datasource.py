@@ -14,7 +14,7 @@ import csv
 import json
 
 # from openelex.api import elections as elec_api
-from openelex.base.datasource import BaseDatasource
+from openelex.base.datasource_place import BaseDatasource
 
 class Datasource(BaseDatasource):
 
@@ -42,7 +42,7 @@ class Datasource(BaseDatasource):
                     for e in self.elections(year=year).values()[0] if e['name'] == election]
             else:
                 elections = []
-                mappings = self.elections_urls()
+                mappings = self.elections()
                 for year, elex in mappings.items():
                     elections.extend([(e['name'], e['url'], e['year'], e['election_id']) for e in elex])
             for name, url, year, election_id in elections:
@@ -70,35 +70,47 @@ class Datasource(BaseDatasource):
                         elif 'ballots' in option.lower():
                             self._ballots_urls[year][name]['ballots'].extend(links)
                         else:
-                            self._results_urls[year][name]['results'].append({'contest_name': option, 'results_links': links})
+                            self._results_urls[year][name]['results'].append({'result_name': option, 'results_links': links})
         return self._results_urls
 
     def voters_urls(self, election=None, year=None):
         if not hasattr(self, '_voters_urls'):
-            self.contest_urls(election=election, year=year)
+            self.results_urls(election=election, year=year)
         return self._voters_urls
 
     def ballots_urls(self, election=None, year=None):
         if not hasattr(self, '_ballots_urls'):
-            self.contest_urls(election=election, year=year)
+            self.results_urls(election=election, year=year)
         return self._ballots_urls
 
-    def elections(self, year=None):
+    def elections(self, year=None, election=None):
         if not hasattr(self, '_elections'):
             self._elections = {}
             date_file = os.path.join(self.working_dir, 'election_dates.csv')
             election_dates = list(csv.DictReader(open(date_file, 'rb')))
             with_years = []
             for e_date in election_dates:
-                d = {}
-                d['year'] = e_date['Date'].split('-')[0]
-                d['date'] = e_date['Date']
-                d['name'] = e_date['Election']
-                d['url'] = e_date['URL']
-                d['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago'
-                election_id = '-'.join(e_date['Election'].lower().replace(',', '').split(' '))
-                d['election_id'] = 'il-%s-%s' % (e_date['Date'], election_id)
-                with_years.append(d)
+                if election and e_date['Election'] == election:
+                    d = {}
+                    d['year'] = e_date['Date'].split('-')[0]
+                    d['date'] = e_date['Date']
+                    d['name'] = e_date['Election']
+                    d['url'] = e_date['URL']
+                    d['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago'
+                    election_id = '-'.join(e_date['Election'].lower().replace(',', '').split(' '))
+                    d['election_id'] = 'il-%s-%s' % (e_date['Date'], election_id)
+                    with_years.append(d)
+                    break
+                else:
+                    d = {}
+                    d['year'] = e_date['Date'].split('-')[0]
+                    d['date'] = e_date['Date']
+                    d['name'] = e_date['Election']
+                    d['url'] = e_date['URL']
+                    d['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago'
+                    election_id = '-'.join(e_date['Election'].lower().replace(',', '').split(' '))
+                    d['election_id'] = 'il-%s-%s' % (e_date['Date'], election_id)
+                    with_years.append(d)
             with_years = sorted(with_years, key=itemgetter('year'))
             for y, group in groupby(with_years, key=itemgetter('year')):
                 self._elections[y] = list(group)
@@ -108,8 +120,22 @@ class Datasource(BaseDatasource):
             return self._elections
 
     def mappings(self, year=None, election=None):
+        try:
+            f = open(os.path.join(self.mappings_dir, 'filenames.json'), 'rb')
+            d = json.loads(f.read())
+        except IOError:
+            d = self.update_mappings(year=year, election=election)
+        print d
+        if year and election:
+            elec = [e for e in d[year] if e['name'] == election]
+            d = {year: elec}
+        elif year:
+            d = {year: d[year]}
+        return d
+
+    def update_mappings(self, year=None, election=None):
         d = {}
-        elections = self.elections(year=year)
+        elections = self.elections(year=year, election=election)
         results = self.results_urls(year=year, election=election)
         ballots = self.ballots_urls(year=year, election=election)
         voters = self.voters_urls(year=year, election=election)
@@ -143,7 +169,7 @@ class Datasource(BaseDatasource):
 
     @property
     def _scraper(self):
-        s = scrapelib.Scraper(requests_per_minute=60,
+        s = scrapelib.Scraper(requests_per_minute=120,
                               follow_robots=True,
                               raise_errors=False,
                               retry_attempts=0)
