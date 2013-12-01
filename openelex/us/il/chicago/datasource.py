@@ -125,7 +125,6 @@ class Datasource(BaseDatasource):
             d = json.loads(f.read())
         except IOError:
             d = self.update_mappings(year=year, election=election)
-        print d
         if year and election:
             elec = [e for e in d[year] if e['name'] == election]
             d = {year: elec}

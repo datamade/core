@@ -7,25 +7,40 @@ import unicodecsv
 import datetime
 import scrapelib
 from datetime import datetime
+from BeautifulSoup import BeautifulSoup
+from urlparse import parse_qs, urlparse
+import requests
+import unicodedata
+import re
 
 """
 Usage:
   TODO: Explain how to use this thing
 """
 
+def slugify(value):
+    try:
+        value = value.decode('utf-8')
+    except UnicodeEncodeError:
+        pass
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub('[^\w\s-]', '', value).strip().lower()
+    return re.sub('[-\s]+', '-', value)
+
 class LoadResults(BaseLoader):
     
 
-    def load(self):
-        connect('openelex_il_test')
-        self.make_contests()
+    def load(self, year=None, election=None, update_contests=False):
+        # This step takes a while so make it optional
+        if update_contests:
+            self.update_contests()
+        self.load_alderman_results(year=year, election_id=election)
     
     @property
     def mapper_file(self):
-        print self.mappings_dir
         return json.load(open(join(self.mappings_dir, 'filenames.json'), 'rb'))
 
-    def make_contests(self):
+    def update_contests(self):
         for year, elections in self.mapper_file.items():
             for election in elections:
                 contest = {
@@ -46,13 +61,93 @@ class LoadResults(BaseLoader):
                 for result in election['results']:
                     # TODO: Need to somehow figure out the
                     # what spatial area the offices cover
+                    # There is also a need to somehow create 
+                    # a uniform way of representing an individual Office name
+                    # ex: Alderman 14th Ward is the same as 14th Ward Alderman
                     o = {
                         'state': self.state,
                         'name': result['result_name'],
                     }
                     office, created = Office.objects.get_or_create(**o)
 
-                    # need to get ward, precinct, contest name, candidate_names
+    def load_alderman_results(self, **kwargs):
+        contests = Contest.objects(**kwargs)
+        mapped = self.mapper_file
+        for contest in contests:
+            election_results = [e['results'] for e in mapped[str(contest.year)] 
+                if e['election_id'] == contest.election_id][0]
+            Contest.objects(id=contest.id).update_one(set__results=[])
+            for result in self._make_alderman_results(election_results):
+                Contest.objects(id=contest.id).update_one(push__results=result)
+        return 'boogers'
+
+    def _make_alderman_results(self, election_results):
+        cand_temp = {
+            'uuid': None,
+            'state': self.state,
+            'given_name': None,
+            'additional_name': None,
+            'family_name': None,
+            'suffix': None,
+            'name': None,
+            'other_names': [],
+            'parties': [],
+            'identifiers': {}
+        }
+        result_temp = {
+            'jurisdiction': None,
+            'ocd_id': 'ocd-division/country:us/state:il/place:chicago',
+            'raw_office': None,
+            'reporting_level': 'precinct',
+            'candidate': None,
+            'write_in': False,
+            'office': None,
+            'party': None,
+            'total_votes': 0,
+            'vote_breakdowns': {},
+            'winner': False
+        }
+        for result in election_results:
+            if 'alderman' in result['result_name'].lower():
+                raw_office = result['result_name']
+                office, created = Office.objects.get_or_create(
+                    name=result['result_name'], 
+                    state=self.state)
+                for page in result['results_links']:
+                    ward = parse_qs(urlparse(page).query)['Ward'][0]
+                    soup = BeautifulSoup(self._scraper.urlopen(page))
+                    table = soup.find('table')
+                    all_rows = self.parse_table(table)
+                    header = all_rows.next()[1:]
+                    for row in all_rows:
+                        try:
+                            precinct = int(row.pop(0))
+                            res = result_temp.copy()
+                            cand = cand_temp.copy()
+                            res['raw_office'] = raw_office
+                            res['office'] = office
+                            res['ocd_id'] = '%s/ward:%s/precinct:%s' % (res['ocd_id'], ward, precinct)
+                            for option,votes in zip(header, row):
+                                cand['name'] = option
+                                res['total_votes'] = votes
+                                res['candidate'] = Candidate(**cand)
+                                r = Result(**res)
+                                yield r
+                        except ValueError:
+                            continue
+
+    def parse_table(self, results_table) :
+        for row in results_table.findAll('tr'):
+            row_list = []
+            cells = row.findAll('td')
+            if len(cells) < 2:
+                continue
+            for cell in cells:
+                row_list.append(cell.text)
+            if len(row_list) > 2:
+                yield row_list[::2]
+            else:
+                yield row_list
 
     @property
     def _scraper(self):
