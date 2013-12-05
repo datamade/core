@@ -57,17 +57,19 @@ class LoadResults(BaseLoader):
                 else:
                     c.updated = datetime.now()
                     c.save()
-                for name, urls in election['results'].items():
+                for result in election['results']:
                     # TODO: Need to somehow figure out the
                     # what spatial area the offices cover
                     # There is also a need to somehow create 
                     # a uniform way of representing an individual Office name
                     # ex: Alderman 14th Ward is the same as 14th Ward Alderman
-                    o = {
-                        'state': self.state,
-                        'name': name,
-                    }
-                    office, created = Office.objects.get_or_create(**o)
+                    name = result['result_name'].title()
+                    if 'Alderman' in name:
+                        o = {
+                            'state': self.state,
+                            'name': result['result_name'].title(),
+                        }
+                        office, created = Office.objects.get_or_create(**o)
 
     def load_alderman_results(self, **kwargs):
         for k,v in kwargs.items():
@@ -78,7 +80,6 @@ class LoadResults(BaseLoader):
         for contest in contests:
             election_results = [e['results'] for e in mapped[str(contest.year)]
                 if e['election_id'] == contest.election_id][0]
-            print election_results
             Contest.objects(id=contest.id).update_one(set__results=[])
             for result in self._make_alderman_results(election_results):
                 Contest.objects(id=contest.id).update_one(push__results=result)
