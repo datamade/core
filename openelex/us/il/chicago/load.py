@@ -28,7 +28,6 @@ def slugify(value):
     return re.sub('[-\s]+', '-', value)
 
 class LoadResults(BaseLoader):
-    
 
     def load(self, year=None, election=None, update_contests=False):
         # This step takes a while so make it optional
@@ -58,7 +57,7 @@ class LoadResults(BaseLoader):
                 else:
                     c.updated = datetime.now()
                     c.save()
-                for result in election['results']:
+                for name, urls in election['results'].items():
                     # TODO: Need to somehow figure out the
                     # what spatial area the offices cover
                     # There is also a need to somehow create 
@@ -66,54 +65,35 @@ class LoadResults(BaseLoader):
                     # ex: Alderman 14th Ward is the same as 14th Ward Alderman
                     o = {
                         'state': self.state,
-                        'name': result['result_name'],
+                        'name': name,
                     }
                     office, created = Office.objects.get_or_create(**o)
 
     def load_alderman_results(self, **kwargs):
+        for k,v in kwargs.items():
+            if not kwargs[k]:
+                del kwargs[k]
         contests = Contest.objects(**kwargs)
         mapped = self.mapper_file
         for contest in contests:
-            election_results = [e['results'] for e in mapped[str(contest.year)] 
+            election_results = [e['results'] for e in mapped[str(contest.year)]
                 if e['election_id'] == contest.election_id][0]
+            print election_results
             Contest.objects(id=contest.id).update_one(set__results=[])
             for result in self._make_alderman_results(election_results):
                 Contest.objects(id=contest.id).update_one(push__results=result)
         return 'boogers'
 
     def _make_alderman_results(self, election_results):
-        cand_temp = {
-            'uuid': None,
-            'state': self.state,
-            'given_name': None,
-            'additional_name': None,
-            'family_name': None,
-            'suffix': None,
-            'name': None,
-            'other_names': [],
-            'parties': [],
-            'identifiers': {}
-        }
-        result_temp = {
-            'jurisdiction': None,
-            'ocd_id': 'ocd-division/country:us/state:il/place:chicago',
-            'raw_office': None,
-            'reporting_level': 'precinct',
-            'candidate': None,
-            'write_in': False,
-            'office': None,
-            'party': None,
-            'total_votes': 0,
-            'vote_breakdowns': {},
-            'winner': False
-        }
-        for result in election_results:
-            if 'alderman' in result['result_name'].lower():
-                raw_office = result['result_name']
+        for election in election_results:
+            name = election['result_name']
+            urls = election['results_links']
+            if 'alderman' in name.lower():
+                raw_office = name
                 office, created = Office.objects.get_or_create(
-                    name=result['result_name'], 
+                    name=name,
                     state=self.state)
-                for page in result['results_links']:
+                for page in urls:
                     ward = parse_qs(urlparse(page).query)['Ward'][0]
                     soup = BeautifulSoup(self._scraper.urlopen(page))
                     table = soup.find('table')
@@ -122,11 +102,11 @@ class LoadResults(BaseLoader):
                     for row in all_rows:
                         try:
                             precinct = int(row.pop(0))
-                            res = result_temp.copy()
-                            cand = cand_temp.copy()
+                            res = {'reporting_level': 'precinct'}
+                            cand = {'state': self.state}
                             res['raw_office'] = raw_office
                             res['office'] = office
-                            res['ocd_id'] = '%s/ward:%s/precinct:%s' % (res['ocd_id'], ward, precinct)
+                            res['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
                             for option,votes in zip(header, row):
                                 cand['name'] = option
                                 res['total_votes'] = votes
