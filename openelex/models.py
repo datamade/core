@@ -11,7 +11,7 @@ from mongoengine.fields import (
     StringField,
 )
 
-class Candidate(EmbeddedDocument):
+class Candidate(Document):
     """
     State is included because in nearly all cases, a candidate is unique to a state (presidential candidates run in multiple states,
     but hail from a single state). This would help with lookups and prevent duplicates. Identifiers is a DictField because a candidate
@@ -62,7 +62,7 @@ class Result(EmbeddedDocument):
     ocd_id = StringField()
     raw_office = StringField()
     reporting_level = StringField(required=True)
-    candidate = EmbeddedDocumentField(Candidate)
+    candidate = ReferenceField(Candidate)
     write_in = BooleanField(default=False)
     office = ReferenceField(Office)
     party = StringField()

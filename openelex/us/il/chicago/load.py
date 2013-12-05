@@ -111,7 +111,8 @@ class LoadResults(BaseLoader):
                             for option,votes in zip(header, row):
                                 cand['name'] = option
                                 res['total_votes'] = votes
-                                res['candidate'] = Candidate(**cand)
+                                c, created = Candidate.objects.get_or_create(**cand)
+                                res['candidate'] = c
                                 r = Result(**res)
                                 yield r
                         except ValueError:
