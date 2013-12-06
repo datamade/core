@@ -29,11 +29,9 @@ def slugify(value):
 
 class LoadResults(BaseLoader):
 
-    def load(self, year=None, election=None, update_contests=False):
+    def load(self, **kwargs):
         # This step takes a while so make it optional
-        if update_contests:
-            self.update_contests()
-        self.load_alderman_results(year=year, election_id=election)
+        self.load_alderman_results(year=kwargs.get('year'), election_id=kwargs.get('election'))
     
     @property
     def mapper_file(self):
@@ -49,6 +47,7 @@ class LoadResults(BaseLoader):
                     'result_type': 'certified',
                     'state': self.state,
                     'year': year,
+                    'source': 'http://chicagoelections.com',
                 }
                 c, created = Contest.objects.get_or_create(**contest)
                 if created:
@@ -69,54 +68,99 @@ class LoadResults(BaseLoader):
                             'state': self.state,
                             'name': result['result_name'].title(),
                         }
-                        office, created = Office.objects.get_or_create(**o)
+                        office = Office(**o)
 
     def load_alderman_results(self, **kwargs):
-        for k,v in kwargs.items():
-            if not kwargs[k]:
-                del kwargs[k]
-        contests = Contest.objects(**kwargs)
-        mapped = self.mapper_file
-        for contest in contests:
-            election_results = [e['results'] for e in mapped[str(contest.year)]
-                if e['election_id'] == contest.election_id][0]
-            Contest.objects(id=contest.id).update_one(set__results=[])
-            for result in self._make_alderman_results(election_results):
-                Contest.objects(id=contest.id).update_one(push__results=result)
+        year = kwargs.get('year')
+        elections = self.mapper_file
+        if kwargs.get('year'):
+            elections = elections[kwargs.get('year')]
+            if kwargs.get('election_id'):
+                elections = [e for e in elections if e['election_id'] == kwargs.get('election_id')]
+        if kwargs.get('election_id'):
+            elex = []
+            for year, e in elections:
+                elex.extend([el for el in e if el['election_id'] == kwargs.get('election_id')])
+            elections = elex
+        for election in elections:
+            for result_set in election['results']:
+                name = result_set['result_name'].title()
+                if 'Alderman' in name:
+                    o = {
+                        'state': self.state,
+                        'name': name,
+                    }
+                    office = Office(**o)
+                    c = {
+                        'election_id': election['election_id'],
+                        'start_date': datetime.strptime(election['date'], '%Y-%m-%d'),
+                        'end_date': datetime.strptime(election['date'], '%Y-%m-%d'),
+                        'result_type': 'certified',
+                        'state': self.state,
+                        'year': year,
+                        'source': 'http://chicagoelections.com',
+                        'office': office,
+                        'raw_office': name,
+                        'slug': slugify(name),
+                    }
+                    contest, created = Contest.objects.get_or_create(**c)
+                    if created:
+                        contest.created = datetime.now()
+                        contest.save()
+                    else:
+                        contest.updated = datetime.now()
+                        contest.save()
+                    self._make_alderman_results(result_set, contest)
         return 'boogers'
 
-    def _make_alderman_results(self, election_results):
-        for election in election_results:
-            name = election['result_name']
-            urls = election['results_links']
-            if 'alderman' in name.lower():
-                raw_office = name
-                office, created = Office.objects.get_or_create(
-                    name=name,
-                    state=self.state)
-                for page in urls:
-                    ward = parse_qs(urlparse(page).query)['Ward'][0]
-                    soup = BeautifulSoup(self._scraper.urlopen(page))
-                    table = soup.find('table')
-                    all_rows = self.parse_table(table)
-                    header = all_rows.next()[1:]
-                    for row in all_rows:
-                        try:
-                            precinct = int(row.pop(0))
-                            res = {'reporting_level': 'precinct'}
-                            cand = {'state': self.state}
-                            res['raw_office'] = raw_office
-                            res['office'] = office
-                            res['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
-                            for option,votes in zip(header, row):
-                                cand['name'] = option
-                                res['total_votes'] = votes
-                                c, created = Candidate.objects.get_or_create(**cand)
-                                res['candidate'] = c
-                                r = Result(**res)
-                                yield r
-                        except ValueError:
-                            continue
+    def _make_alderman_results(self, election_results, contest):
+        name = election_results['result_name']
+        urls = election_results['results_links']
+        if 'alderman' in name.lower():
+            for page in urls:
+                ward = parse_qs(urlparse(page).query)['Ward'][0]
+                soup = BeautifulSoup(self._scraper.urlopen(page))
+                table = soup.find('table')
+                all_rows = self.parse_table(table)
+                header = all_rows.next()[1:]
+                for row in all_rows:
+                    try:
+                        precinct = int(row.pop(0))
+                        res = {'reporting_level': 'precinct'}
+                        cand = {'state': self.state}
+                        res['ocd_id'] = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
+                        res['contest'] = contest
+                        res['state'] = self.state
+                        res['raw_jurisdiction'] = 'Chicago, IL Ward %s' % ward
+                        res['election_id'] = contest.election_id
+                        for option,votes in zip(header, row):
+                            cand['raw_full_name'] = option
+                            try:
+                                c = Candidate.objects.get(raw_full_name=option)
+                                can = {}
+                                if not contest.election_id in c.election_ids:
+                                    can['push__contests'] = contest
+                                    can['push__contest_slugs'] = contest.slug
+                                    can['push__election_ids'] = contest.election_id
+                                    Candidate.objects(id=c.id).update_one(**can)
+                            except Candidate.DoesNotExist:
+                                cand['contests'] = [contest]
+                                cand['contest_slugs'] = [contest.slug]
+                                cand['election_ids'] = [contest.election_id]
+                                cand['source'] = 'http://chicagoelections.com'
+                                cand['slug'] = slugify(option)
+                                c = Candidate(**cand)
+                                c.save()
+                            res['raw_total_votes'] = votes
+                            res['total_votes'] = votes
+                            res['candidate'] = c
+                            res['contest'] = contest
+                            res['candidate_slug'] = c.slug
+                            res['contest_slug'] = contest.slug
+                            res['source'] = page
+                            r, created = Result.objects.get_or_create(**res)
+                    except ValueError:
+                        continue
 
     def parse_table(self, results_table) :
         for row in results_table.findAll('tr'):
