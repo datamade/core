@@ -37,39 +37,6 @@ class LoadResults(BaseLoader):
     def mapper_file(self):
         return json.load(open(join(self.mappings_dir, 'filenames.json'), 'rb'))
 
-    def update_contests(self):
-        for year, elections in self.mapper_file.items():
-            for election in elections:
-                contest = {
-                    'election_id': election['election_id'],
-                    'start_date': datetime.strptime(election['date'], '%Y-%m-%d'),
-                    'end_date': datetime.strptime(election['date'], '%Y-%m-%d'),
-                    'result_type': 'certified',
-                    'state': self.state,
-                    'year': year,
-                    'source': 'http://chicagoelections.com',
-                }
-                c, created = Contest.objects.get_or_create(**contest)
-                if created:
-                    c.created = datetime.now()
-                    c.save()
-                else:
-                    c.updated = datetime.now()
-                    c.save()
-                for result in election['results']:
-                    # TODO: Need to somehow figure out the
-                    # what spatial area the offices cover
-                    # There is also a need to somehow create 
-                    # a uniform way of representing an individual Office name
-                    # ex: Alderman 14th Ward is the same as 14th Ward Alderman
-                    name = result['result_name'].title()
-                    if 'Alderman' in name:
-                        o = {
-                            'state': self.state,
-                            'name': result['result_name'].title(),
-                        }
-                        office = Office(**o)
-
     def load_alderman_results(self, **kwargs):
         year = kwargs.get('year')
         elections = self.mapper_file
@@ -111,7 +78,8 @@ class LoadResults(BaseLoader):
                         contest.updated = datetime.now()
                         contest.save()
                     self._make_alderman_results(result_set, contest)
-        return 'boogers'
+            self._make_voter_counts(election)
+        return 'Aldermanic contests made'
 
     def _make_alderman_results(self, election_results, contest):
         name = election_results['result_name']
@@ -161,6 +129,31 @@ class LoadResults(BaseLoader):
                             r, created = Result.objects.get_or_create(**res)
                     except ValueError:
                         continue
+
+    def _make_ward_voter_counts(self, election):
+        contest_names = [n['result_name'].title() \
+            for n in election['results'] if 'Alderman' in n['result_name'].title()]
+        election_id = election['election_id']
+        for contest in contest_names:
+            c = Contest.objects(Q(raw_office=contest) & Q(election_id=election_id))[0]
+            for url in election['voters']:
+                print url
+                ward = parse_qs(urlparse(url).query)['Ward'][0]
+                soup = BeautifulSoup(self._scraper.urlopen(url))
+                table = soup.find('table')
+                all_rows = self.parse_table(table)
+                all_rows.next()
+                for row in all_rows:
+                    try:
+                        precinct = int(row.pop(0))
+                        voters = int(row[0])
+                        ocd_id = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
+                        results = Result.objects(Q(contest=c) & Q(ocd_id=ocd_id))\
+                            .update(set__registered_voters=voters, multi=True)
+                        print 'Updated %s in Ward %s, precinct %s' % (results, ward, precinct)
+                    except ValueError:
+                        continue
+        return 'Registered voter counts made'
 
     def parse_table(self, results_table) :
         for row in results_table.findAll('tr'):
