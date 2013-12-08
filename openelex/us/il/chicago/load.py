@@ -78,7 +78,7 @@ class LoadResults(BaseLoader):
                         contest.updated = datetime.now()
                         contest.save()
                     self._make_alderman_results(result_set, contest)
-            self._make_voter_counts(election)
+            self._make_ward_voter_counts(election)
         return 'Aldermanic contests made'
 
     def _make_alderman_results(self, election_results, contest):
