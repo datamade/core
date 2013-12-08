@@ -131,28 +131,23 @@ class LoadResults(BaseLoader):
                         continue
 
     def _make_ward_voter_counts(self, election):
-        contest_names = [n['result_name'].title() \
-            for n in election['results'] if 'Alderman' in n['result_name'].title()]
         election_id = election['election_id']
-        for contest in contest_names:
-            c = Contest.objects(Q(raw_office=contest) & Q(election_id=election_id))[0]
-            for url in election['voters']:
-                print url
-                ward = parse_qs(urlparse(url).query)['Ward'][0]
-                soup = BeautifulSoup(self._scraper.urlopen(url))
-                table = soup.find('table')
-                all_rows = self.parse_table(table)
-                all_rows.next()
-                for row in all_rows:
-                    try:
-                        precinct = int(row.pop(0))
-                        voters = int(row[0])
-                        ocd_id = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
-                        results = Result.objects(Q(contest=c) & Q(ocd_id=ocd_id))\
-                            .update(set__registered_voters=voters, multi=True)
-                        print 'Updated %s in Ward %s, precinct %s' % (results, ward, precinct)
-                    except ValueError:
-                        continue
+        for url in election['voters']:
+            ward = parse_qs(urlparse(url).query)['Ward'][0]
+            soup = BeautifulSoup(self._scraper.urlopen(url))
+            table = soup.find('table')
+            all_rows = self.parse_table(table)
+            all_rows.next()
+            for row in all_rows:
+                try:
+                    precinct = int(row.pop(0))
+                    voters = int(row[0])
+                    ocd_id = 'ocd-division/country:us/state:il/place:chicago/ward:%s/precinct:%s' % (ward, precinct)
+                    results = Result.objects(Q(election_id=election_id) & Q(ocd_id=ocd_id))\
+                        .update(set__registered_voters=voters, multi=True)
+                    print 'Updated %s in Ward %s, precinct %s' % (results, ward, precinct)
+                except ValueError:
+                    continue
         return 'Registered voter counts made'
 
     def parse_table(self, results_table) :
