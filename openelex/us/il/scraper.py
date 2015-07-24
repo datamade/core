@@ -3,6 +3,7 @@ import lxml.html
 import os
 import json
 import re
+from dateutil.parser import parse
 
 class Scraper(scrapelib.Scraper):
     def __init__(   self,
@@ -71,9 +72,19 @@ class Scraper(scrapelib.Scraper):
             yield elec_name, contests, registered_voters, ballots_cast
 
     def make_elections_json(self, elec_name, contests, registered_voters, ballots_cast):
-        slug = re.sub(r'[^0-9a-z]+', '_', elec_name.lower().strip())
+        # slug = re.sub(r'[^0-9a-z]+', '_', elec_name.lower().strip())
+        elec_name = elec_name[5:]
+        parts = elec_name.split(' - ')
+
+
+        date_obj = parse(parts[1])
+        date_formatted = str(date_obj.year) + ('0'+str(date_obj.month))[-2:] + ('0'+str(date_obj.day))[-2:]
+
+        slug_parts = [date_formatted, 'il', re.sub(r'[^0-9a-z]+', '_', parts[1].lower().strip()), 'precinct']
+        slug = '__'.join(slug_parts)
+
+
         filename = 'election_json/'+slug+'.json'
-        # TO DO - better semantic filenames
 
         if not os.path.exists(filename):
 
