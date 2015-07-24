@@ -2,7 +2,7 @@ import click
 from mongoengine import ConnectionError
 
 from openelex.db import init_db
-from fetch import fetch
+from fetch import fetch, scrape
 from shell import shell
 from publish import publish
 
@@ -33,6 +33,8 @@ cli.add_command(transform.run)
 cli.add_command(transform.reverse)
 cli.add_command(validate.list)
 cli.add_command(validate.run)
+
+cli.add_command(scrape)
 
 # Initialize prod Mongo connection
 try:

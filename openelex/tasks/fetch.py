@@ -1,4 +1,5 @@
 import sys
+import os
 
 import click
 
@@ -36,3 +37,17 @@ def fetch(state, datefilter='', unprocessed=False):
 
     for std_filename, url in filename_url_pairs:
         fetcher.fetch(url, std_filename)
+
+@click.command(help="Scrape places and store results files")
+@default_state_options
+@click.option('--place', help="the name of the place to scrape")
+def scrape(state, place,  datefilter=''):
+
+    state_mod = load_module(state, ['scraper'])
+    s = state_mod.scraper.Scraper()
+
+    if not os.path.exists('election_json'):
+        os.mkdir('election_json')
+
+    for elec_name, contests, registered_voters, ballots_cast in s.election_urls():
+        s.make_elections_json(elec_name, contests, registered_voters, ballots_cast)
