@@ -1,5 +1,6 @@
 import sys
 import os
+import importlib
 
 import click
 
@@ -43,8 +44,8 @@ def fetch(state, datefilter='', unprocessed=False):
 @click.option('--place', help="the name of the place to scrape")
 def scrape(state, place,  datefilter=''):
 
-    state_mod = load_module(state, ['scraper'])
-    s = state_mod.scraper.Scraper()
+    placemod = importlib.import_module('%s.places.%s.scraper' %(state, place))
+    s = placemod.Scraper()
 
     if not os.path.exists('election_json'):
         os.mkdir('election_json')
