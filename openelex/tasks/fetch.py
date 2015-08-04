@@ -44,7 +44,7 @@ def fetch(state, datefilter='', unprocessed=False):
 @click.option('--place', help="the name of the place to scrape")
 def scrape(state, place,  datefilter=''):
 
-    placemod = importlib.import_module('%s.places.%s.scraper' %(state, place))
+    placemod = importlib.import_module('openelex.us.%s.places.%s.scraper' %(state, place))
     s = placemod.Scraper()
 
     if not os.path.exists('election_json'):
