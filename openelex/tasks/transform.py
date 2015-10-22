@@ -1,6 +1,7 @@
 import sys
 
 import click
+import importlib
 
 from validate import run_validation
 
@@ -9,15 +10,19 @@ from .utils import load_module, split_args
 @click.command(name='transform.list', help="Show available data transformations")
 @click.option('--state', required=True, help="Two-letter state postal, e.g. NY")
 @click.option('--raw', is_flag=True, help="List raw transforms")
-def list(state, raw=False):
+@click.option('--place', help="the name of a place to transform")
+def list(state, raw=False, place=None):
     """
     Show available transformations on data loaded in MongoDB.
 
     """
-    # Iniitialize transforms for the state in global registry
-    state_mod = load_module(state, ['transform'])
-    transforms = state_mod.transform.registry.all(state)
-    print "\n%s transforms, in order of execution:\n" % state.upper()
+
+    transforms = _get_transforms(state, raw, place)
+
+    if place:
+        print "\n%s %s transforms, in order of execution:\n" % (place.upper(), state.upper())
+    else:
+        print "\n%s transforms, in order of execution:\n" % state.upper()
     for transform in transforms:
         print "* %s" % transform
         validators = transform.validators
@@ -36,8 +41,24 @@ class IncludeExcludeError(Exception):
     """
     pass
 
+def _get_transforms(state, raw=False, place=None):
+    """
+    Returns transforms based on a state and optionally a place
+    """
 
-def _select_transforms(state, include=None, exclude=None, raw=False):
+    # get transforms a place within a state
+    if place:
+        place_transform_mod = importlib.import_module('openelex.us.%s.places.%s.transform' %(state, place))
+        transforms = place_transform_mod.registry.all(state, raw=raw, place=place)
+    # get transforms for a state
+    else:
+        state_mod = load_module(state, ['transform'])
+        transforms = state_mod.transform.registry.all(state, raw=raw)
+
+    return transforms
+
+
+def _select_transforms(state, include=None, exclude=None, raw=False, place=None):
     """
     Select transforms to run or reverse based on state and a list of transform
     names to include or exclude.
@@ -45,9 +66,8 @@ def _select_transforms(state, include=None, exclude=None, raw=False):
     if include and exclude:
         raise IncludeExcludeError("You can not use both include and exclude flags!")
 
-    # Iniitialize transforms for the state in global registry
-    state_mod = load_module(state, ['transform'])
-    transforms = state_mod.transform.registry.all(state, raw=raw)
+    transforms = _get_transforms(state, raw, place)
+    
     run_transforms = []
 
     # Filter transformations based in include/exclude flags
@@ -74,14 +94,17 @@ def _select_transforms(state, include=None, exclude=None, raw=False):
 @click.option('--no-reverse', is_flag=True, help="Don't reverse before running this "
     "transform, even if it is set to auto-reverse")
 @click.option('--raw', is_flag=True, help="Transforms to run are raw transforms")
-def run(state, include=None, exclude=None, no_reverse=False, raw=False):
+@click.option('--place', help="the name of a place to transform")
+def run(state, include=None, exclude=None, no_reverse=False, raw=False, place=None):
     """
     Run transformations on data loaded in MongoDB.
 
-    State is required. Optionally provide to limit transforms that are performed.
+    State is required. Place is optional.
+
+    Optionally provide to limit transforms that are performed.
     """
     try:
-        run_transforms = _select_transforms(state, include, exclude, raw)
+        run_transforms = _select_transforms(state, include, exclude, raw, place)
     except IncludeExcludeError as e:
         sys.exit(e)
 
@@ -103,14 +126,17 @@ def run(state, include=None, exclude=None, no_reverse=False, raw=False):
 @click.option('--include', help="Transforms to reverse (comma-separated list)")
 @click.option('--exclude', help="Transforms to skip (comma-separated list)")
 @click.option('--raw', is_flag=True, help="Transforms to reverse are raw transforms")
-def reverse(state, include=None, exclude=None, raw=False):
+@click.option('--place', help="the name of a place within the state")
+def reverse(state, include=None, exclude=None, raw=False, place=None):
     """
     Reverse a previously run transformation.
 
-    State is required. Optionally provide to limit transforms that are performed.
+    State is required. Place is optional.
+
+    Optionally provide to limit transforms that are performed.
     """
     try:
-        run_transforms = _select_transforms(state, include, exclude, raw)
+        run_transforms = _select_transforms(state, include, exclude, raw, place)
     except IncludeExcludeError as e:
         sys.exit(e)
 
