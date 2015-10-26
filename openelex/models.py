@@ -40,6 +40,7 @@ REPORTING_LEVEL_CHOICES = (
     'county',
     'precinct',
     'parish',
+    'municipal_district'
 )
 
 CANDIDATE_FLAG_CHOICES = (
@@ -106,6 +107,7 @@ class RawResult(TimestampMixin, DynamicDocument):
     source = StringField(required=True, help_text="Name of data source (preferably from datasource.py). NOTE: this could be a single file among many for a given state, if results are split into different files by reporting level")
     election_id = StringField(required=True, help_text="election id, e.g. md-2012-11-06-general")
     state = StringField(required=True, choices=STATE_POSTALS)
+    place = StringField()
 
     ### Contest fields ####
     start_date = DateTimeField(required=True)
@@ -129,6 +131,9 @@ class RawResult(TimestampMixin, DynamicDocument):
     suffix = StringField(max_length=200, help_text="Only if present in raw results.")
     additional_name = StringField(max_length=200, help_text="Middle name, "
         "nickname, etc.  Only if provided in raw results.")
+
+    ### Value fields - for ballot initiatives, judicial appointments ###
+    value = StringField(max_length=200, choices=('Yes', 'No')) # this is analogous to candidate, as what is being voted for (should this be a boolean?)
 
     ### Result fields ###
     reporting_level = StringField(required=True, choices=REPORTING_LEVEL_CHOICES)
@@ -207,6 +212,7 @@ class Office(Document):
     OFFICE_STATES = STATE_POSTALS + ['US',]
 
     state = StringField(choices=OFFICE_STATES, required=True)
+    place = StringField()
     name = StringField(required=True)
     district = StringField()
     chamber = StringField()
@@ -215,15 +221,19 @@ class Office(Document):
         return u'%s' % self.key
 
     @classmethod
-    def make_key(cls, state, name, district=None):
-        key = "%s %s" % (state, name)
+    def make_key(cls, state, name, district=None, place=None):
+
+        if place:
+            key = "%s %s %s" % (state, place, name)
+        else:
+            key = "%s %s" % (state, name)
         if district:
             key += " (%s)" % district
         return key
 
     @property
     def key(self):
-        return self.make_key(self.state, self.name, self.district)
+        return self.make_key(self.state, self.name, self.district, self.place)
 
     @property
     def slug(self):

@@ -49,7 +49,7 @@ def _get_transforms(state, raw=False, place=None):
     # get transforms a place within a state
     if place:
         place_transform_mod = importlib.import_module('openelex.us.%s.places.%s.transform' %(state, place))
-        transforms = place_transform_mod.registry.all(state, raw=raw, place=place)
+        transforms = place_transform_mod.registry.all(state, raw=raw)
     # get transforms for a state
     else:
         state_mod = load_module(state, ['transform'])
