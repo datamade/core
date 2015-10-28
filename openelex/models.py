@@ -212,6 +212,7 @@ class Office(Document):
     OFFICE_STATES = STATE_POSTALS + ['US',]
 
     state = StringField(choices=OFFICE_STATES, required=True)
+    county = StringField()
     place = StringField()
     name = StringField(required=True)
     district = StringField()
