@@ -384,7 +384,6 @@ class Candidate(TimestampMixin, DynamicDocument):
     State is included because in nearly all cases, a candidate
     is unique to a state (presidential races involve state-level
     candidacies). This helps with lookups and prevents duplicates.
-
     """
     ### Meta fields ###
     source = StringField(required=True, help_text="Name of data source (preferably from datasource.py). NOTE: this could be a single file among many for a given state, if results are split into different files by reporting level")

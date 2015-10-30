@@ -14,6 +14,8 @@ from openelex.us import STATE_POSTALS
 
 BASE_OPTIONS = [
     click.option('--state', required=True, help="Two-letter state-abbreviation, e.g. NY"),
+    click.option('--place', help="the name of a place within the state. "
+                 "Default os to bake the entire state"),
     click.option('--fmt', help="Format of output files.  Can be 'csv' or "
                  "'json'. Defaults is 'csv'.", default="csv"),
     click.option('--outputdir', help="Directory where output files will be "
@@ -135,7 +137,7 @@ def election_file_options(f):
 @click.command(name="bake.election_file", help="Write election and candidate "
     "data with on election per file")
 @election_file_options
-def election_file(state, fmt='csv', outputdir=None, datefilter=None,
+def election_file(state, place=None, fmt='csv', outputdir=None, datefilter=None,
                   electiontype=None, level=None, raw=False):
     """
     Write election and candidate data with one election per file.
