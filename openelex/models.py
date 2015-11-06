@@ -222,10 +222,12 @@ class Office(Document):
         return u'%s' % self.key
 
     @classmethod
-    def make_key(cls, state, name, district=None, place=None):
+    def make_key(cls, state, name, district=None, place=None, county=None):
 
         if place:
             key = "%s %s %s" % (state, place, name)
+        elif county:
+            key = "%s %s %s" % (state, county, name)
         else:
             key = "%s %s" % (state, name)
         if district:
