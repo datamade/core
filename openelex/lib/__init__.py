@@ -31,7 +31,7 @@ def build_raw_github_url(state, datestring, raw_filename):
     tpl = "https://raw.githubusercontent.com/openelections/openelections-data-{}/master/{}/{}"
     return tpl.format(state.lower(), datestring, raw_filename)
 
-def standardized_filename(state, start_date, extension,
+def standardized_filename(state, start_date, extension, place=None,
     party=None, special=False, race_type=None, reporting_level=None,
     jurisdiction=None, office=None, office_district=None,
     prefix_bits=[], suffix_bits=[], sep="__"):
@@ -84,6 +84,9 @@ def standardized_filename(state, start_date, extension,
         start_date.replace('-', ''),
         state.lower(),
     ])
+
+    if place:
+        bits.append(place.lower())
 
     if special:
         bits.append('special')

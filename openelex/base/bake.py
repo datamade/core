@@ -33,7 +33,8 @@ class FieldNameTransform(FieldTransform):
             data[self.output_name] = val
             del data[self.db_field]
         except KeyError:
-            data[self.output_name] = None
+            if self.output_name not in data:
+                data[self.output_name] = None
 
         return data
 
@@ -208,7 +209,6 @@ class Roller(object):
                     filters[collection_name] &= collection_q 
             except AttributeError:
                 pass
-
         return filters
 
     @classmethod
@@ -546,8 +546,14 @@ class BaseBaker(object):
             timestamp = datetime.now()
 
         state = filter_kwargs.get('state')
-        return "%s_%s.%s" % (state.lower(),
-            timestamp.strftime(cls.timestamp_format), fmt) 
+        place = filter_kwargs.get('place')
+
+        if place:
+            return "%s_%s_%s.%s" % (state.lower(), place.lower(),
+                timestamp.strftime(cls.timestamp_format), fmt) 
+        else:
+            return "%s_%s.%s" % (state.lower(),
+                timestamp.strftime(cls.timestamp_format), fmt)
 
     @classmethod
     def manifest_filename(cls, timestamp, **filter_kwargs):
@@ -555,8 +561,14 @@ class BaseBaker(object):
         Returns the filename string for the manifest output file.
         """
         state = filter_kwargs.get('state')
-        return "%s_%s_manifest.txt" % (state.lower(),
-            timestamp.strftime(cls.timestamp_format)) 
+        place = filter_kwargs.get('place')
+
+        if place:
+            return "%s_%s_%s_manifest.txt" % (state.lower(),
+                place.lower(), timestamp.strftime(cls.timestamp_format))
+        else:
+            return "%s_%s_manifest.txt" % (state.lower(),
+                timestamp.strftime(cls.timestamp_format))
 
     def collect_items(self):
         """
@@ -708,13 +720,14 @@ class RawBaker(BaseBaker):
     def filename(cls, fmt, timestamp=None, **filter_kwargs):
         state = filter_kwargs.get('state')
         assert state is not None
+        place = filter_kwargs.get('place')
         start_date = filter_kwargs.get('datefilter')
         assert start_date is not None
         start_date_s = start_date.replace('-', '')
         suffix_bits = ['raw']
         race_type = filter_kwargs.get('election_type')
         reporting_level = filter_kwargs.get('reporting_level')
-        return standardized_filename(state=state, start_date=start_date_s,
+        return standardized_filename(state=state, place=place, start_date=start_date_s,
             race_type=race_type, reporting_level=reporting_level,
             extension="."+fmt, suffix_bits=suffix_bits)
 
