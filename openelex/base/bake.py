@@ -239,10 +239,17 @@ class Roller(object):
         return Q(**filters)
 
     def build_filters_result(self, **filter_kwargs):
-        try:
-            return Q(reporting_level=filter_kwargs['reporting_level'])
-        except KeyError:
-            return None
+
+        q = None
+        if 'place' in filter_kwargs:
+            q = Q(place=filter_kwargs['place'].title())
+        if 'reporting_level' in filter_kwargs:
+            if q:
+                q &= Q(reporting_level=filter_kwargs['reporting_level'])
+            else:
+                q = Q(reporting_level=filter_kwargs['reporting_level'])
+
+        return q
         
     def apply_filters(self, **queries):
         """
