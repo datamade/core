@@ -549,33 +549,53 @@ class BaseBaker(object):
         Returns:
             A string represneting the filename for the results file.
         """
-        if timestamp is None:
-            timestamp = datetime.now()
 
         state = filter_kwargs.get('state')
         place = filter_kwargs.get('place')
-
-        if place:
-            return "%s_%s_%s.%s" % (state.lower(), place.lower(),
-                timestamp.strftime(cls.timestamp_format), fmt) 
+        start_date = filter_kwargs.get('datefilter')
+        if start_date:
+            start_date_s = start_date.replace('-', '')
+            race_type = filter_kwargs.get('election_type')
+            reporting_level = filter_kwargs.get('reporting_level')
+            return standardized_filename(state=state, place=place, start_date=start_date_s,
+                race_type=race_type, reporting_level=reporting_level,
+                extension="."+fmt)
         else:
-            return "%s_%s.%s" % (state.lower(),
-                timestamp.strftime(cls.timestamp_format), fmt)
+            if timestamp is None:
+                timestamp = datetime.now()
+            if place:
+                return "%s_%s_%s.%s" % (state.lower(), place.lower(),
+                    timestamp.strftime(cls.timestamp_format), fmt) 
+            else:
+                return "%s_%s.%s" % (state.lower(),
+                    timestamp.strftime(cls.timestamp_format), fmt)
 
     @classmethod
     def manifest_filename(cls, timestamp, **filter_kwargs):
         """
         Returns the filename string for the manifest output file.
         """
+        
         state = filter_kwargs.get('state')
         place = filter_kwargs.get('place')
-
-        if place:
-            return "%s_%s_%s_manifest.txt" % (state.lower(),
-                place.lower(), timestamp.strftime(cls.timestamp_format))
+        start_date = filter_kwargs.get('datefilter')
+        if start_date:
+            start_date_s = start_date.replace('-', '')
+            race_type = filter_kwargs.get('election_type')
+            reporting_level = filter_kwargs.get('reporting_level')
+            return standardized_filename(state=state, place=place, start_date=start_date_s,
+                race_type=race_type, reporting_level=reporting_level,
+                extension="_manifest.txt")
         else:
-            return "%s_%s_manifest.txt" % (state.lower(),
-                timestamp.strftime(cls.timestamp_format))
+            if timestamp is None:
+                timestamp = datetime.now()
+            if place:
+                return "%s_%s_%s_manifest.txt" % (state.lower(),
+                    place.lower(), timestamp.strftime(cls.timestamp_format))
+            else:
+                return "%s_%s_manifest.txt" % (state.lower(),
+                    timestamp.strftime(cls.timestamp_format))
+
 
     def collect_items(self):
         """
