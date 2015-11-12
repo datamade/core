@@ -73,6 +73,14 @@ files when votes represent something other than the votes received by
 a candidate in a particular jurisdiction.
 """
 
+VOTE_VALUE_CHOICES = (
+    'yes',
+    'no'
+)
+"""
+Choices for voting for/against a given ballot measure or retention
+"""
+
 # Model mixins
 
 class TimestampMixin(object):
@@ -123,6 +131,9 @@ class RawResult(TimestampMixin, DynamicDocument):
             "If it requires parsing, perform this as a transform step")
     contest_winner = BooleanField(default=False, help_text="Flag, if provided in raw results.")
 
+    is_retention = BooleanField(default=False, help_text="Whether a contest is voting to retain someone")
+    is_ballot_measure = BooleanField(default=False, help_text="Whether a contest is voting for or against a ballot measure")
+
     ### Candidate fields ###
     #TODO: Add validation to require full_name or family_name
     full_name = StringField(max_length=300, help_text="Only if present in raw results.")
@@ -133,7 +144,7 @@ class RawResult(TimestampMixin, DynamicDocument):
         "nickname, etc.  Only if provided in raw results.")
 
     ### Value fields - for ballot initiatives, judicial appointments ###
-    value = StringField(max_length=200, choices=('Yes', 'No')) # this is analogous to candidate, as what is being voted for (should this be a boolean?)
+    value = StringField(max_length=200, choices=VOTE_VALUE_CHOICES) # this is analogous to candidate, as what is being voted for (should this be a boolean?)
 
     ### Result fields ###
     reporting_level = StringField(required=True, choices=REPORTING_LEVEL_CHOICES)
@@ -381,9 +392,9 @@ signals.post_init.connect(Contest.post_init, sender=Contest)
 signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Contest)
 
 
-class Candidate(TimestampMixin, DynamicDocument):
+class BallotChoice(TimestampMixin, DynamicDocument):
     """
-    State is included because in nearly all cases, a candidate
+    State is included because in nearly all cases, a ballot choice
     is unique to a state (presidential races involve state-level
     candidacies). This helps with lookups and prevents duplicates.
     """
@@ -392,11 +403,40 @@ class Candidate(TimestampMixin, DynamicDocument):
     election_id = StringField(required=True, help_text="election id, e.g. md-2012-11-06-general")
     state = StringField(required=True, choices=STATE_POSTALS)
 
-    person = ReferenceField(Person, help_text="Reference to unique Person record to link candidacies over time and/or across states for presidential cands.")
-
     ### Contest fields ####
     contest = ReferenceField(Contest, reverse_delete_rule=CASCADE, required=True)
     contest_slug = StringField(required=True, help_text="Denormalized contest slug for easier querying and obj repr")
+
+    meta = {'allow_inheritance': True}
+
+
+class BallotMeasure(BallotChoice):
+    full_name = StringField(max_length=200)
+    value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
+
+    @property
+    def name(self):
+        return self.full_name
+
+    @property
+    def key(self):
+        return (self.election_id, self.contest_slug, self.slug, self.value)
+
+    @classmethod
+    def make_slug(cls, **kwargs):
+        return slugify(kwargs.get('full_name'), '-')
+
+    @classmethod
+    def post_init(cls, sender, document, **kwargs):
+        if not document.contest_slug:
+            document.contest_slug = document.contest.slug
+
+        if not document.slug:
+            document.slug = cls.make_slug(full_name=document.full_name)
+
+
+class Candidate(BallotChoice):
+    person = ReferenceField(Person, help_text="Reference to unique Person record to link candidacies over time and/or across states for presidential cands.")
 
     ### Candidate fields ###
     #TODO: Add validation to require full_name or famly_name, assuming we allow full_name (see question above)
@@ -454,6 +494,15 @@ class Candidate(TimestampMixin, DynamicDocument):
     def make_slug(cls, **kwargs):
         return slugify(kwargs.get('full_name'), '-')
 
+# for judicial retention
+class Retention(Candidate):
+    value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
+
+    @property
+    def key(self):
+        return (self.election_id, self.contest_slug, self.slug, self.value)
+
+
 signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Candidate)
 signals.post_init.connect(Candidate.post_init, sender=Candidate)
 
@@ -468,9 +517,14 @@ class Result(TimestampMixin, DynamicDocument):
     contest = ReferenceField(Contest, reverse_delete_rule=CASCADE, required=True)
     contest_slug = StringField(required=True, help_text="Denormalized contest slug for easier querying and obj repr")
 
-    ### Candidate ###
-    candidate = ReferenceField(Candidate, reverse_delete_rule=CASCADE, required=True)
-    candidate_slug = StringField(required=True, help_text="Denormalized candidate slug for easier querying and obj repr")
+    ### Ballot Choices ###
+    # to-do: add validation that either candidate, retention, or ballot measure exist
+    candidate = ReferenceField(Candidate, reverse_delete_rule=CASCADE)
+    candidate_slug = StringField(help_text="Denormalized candidate slug for easier querying and obj repr")
+    retention = ReferenceField(Retention, reverse_delete_rule=CASCADE)
+    retention_slug = StringField(help_text="Denormalized retention slug for easier querying and obj repr")
+    ballot_choice = ReferenceField(BallotChoice, reverse_delete_rule=CASCADE)
+    ballot_choice_slug = StringField(help_text="Denormalized ballot choice slug for easier querying and obj repr")
 
     ### Result fields ###
     reporting_level = StringField(required=True, choices=REPORTING_LEVEL_CHOICES)
