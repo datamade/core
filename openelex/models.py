@@ -351,7 +351,9 @@ class Contest(TimestampMixin, DynamicDocument):
     #TODO: Validation that requires primary_type to be "closed"
     result_type = StringField(required=True, help_text="certified/unofficial, from Openelex metadata")
     special = BooleanField(default=False, help_text="From OpenElex metadata")
-    office = ReferenceField(Office, required=True, help_text="Standardized office")
+    # to-do: validation that requires either office or contest_name
+    office = ReferenceField(Office, help_text="Standardized office")
+    contest_name = StringField(help_text='the name of a judge retention or ballot initiative')
     primary_party = ReferenceField(Party, help_text="This should only be assigned for closed primaries, where voters must be registered in party to vote in the contest")
     slug = StringField(required=True, help_text="Slugified office name, plus district and party if relevant")
 
@@ -383,16 +385,19 @@ class Contest(TimestampMixin, DynamicDocument):
     @classmethod
     def post_init(cls, sender, document, **kwargs):
         if not document.slug:
-            document.slug = document.make_slug(
-                office=document.office,
-                primary_party=document.primary_party
-            )
+            if document.office:
+                document.slug = document.make_slug(
+                    office=document.office,
+                    primary_party=document.primary_party
+                )
+            else:
+                document.slug = slugify(document.contest_name, '-')
 
 signals.post_init.connect(Contest.post_init, sender=Contest)
 signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Contest)
 
 
-class BallotChoice(TimestampMixin, DynamicDocument):
+class BallotChoice(TimestampMixin):
     """
     State is included because in nearly all cases, a ballot choice
     is unique to a state (presidential races involve state-level
@@ -410,7 +415,7 @@ class BallotChoice(TimestampMixin, DynamicDocument):
     meta = {'allow_inheritance': True}
 
 
-class BallotMeasure(BallotChoice):
+class BallotMeasure(BallotChoice, DynamicDocument):
     full_name = StringField(max_length=200)
     value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
 
@@ -435,7 +440,7 @@ class BallotMeasure(BallotChoice):
             document.slug = cls.make_slug(full_name=document.full_name)
 
 
-class Candidate(BallotChoice):
+class Candidate(BallotChoice, DynamicDocument):
     person = ReferenceField(Person, help_text="Reference to unique Person record to link candidacies over time and/or across states for presidential cands.")
 
     ### Candidate fields ###
@@ -495,7 +500,7 @@ class Candidate(BallotChoice):
         return slugify(kwargs.get('full_name'), '-')
 
 # for judicial retention
-class Retention(Candidate):
+class Retention(Candidate, DynamicDocument):
     value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
 
     @property
@@ -523,8 +528,8 @@ class Result(TimestampMixin, DynamicDocument):
     candidate_slug = StringField(help_text="Denormalized candidate slug for easier querying and obj repr")
     retention = ReferenceField(Retention, reverse_delete_rule=CASCADE)
     retention_slug = StringField(help_text="Denormalized retention slug for easier querying and obj repr")
-    ballot_choice = ReferenceField(BallotChoice, reverse_delete_rule=CASCADE)
-    ballot_choice_slug = StringField(help_text="Denormalized ballot choice slug for easier querying and obj repr")
+    ballot_measure = ReferenceField(BallotMeasure, reverse_delete_rule=CASCADE)
+    ballot_measure_slug = StringField(help_text="Denormalized ballot measure slug for easier querying and obj repr")
 
     ### Result fields ###
     reporting_level = StringField(required=True, choices=REPORTING_LEVEL_CHOICES)
@@ -575,8 +580,12 @@ class Result(TimestampMixin, DynamicDocument):
         if not document.contest_slug:
             document.contest_slug = document.contest.slug
 
-        if not document.candidate_slug:
+        if not document.candidate_slug and document.candidate:
             document.candidate_slug = document.candidate.slug
+        if not document.retention_slug and document.retention:
+            document.retention_slug = document.retention.slug
+        if not document.ballot_measure_slug and document.ballot_measure:
+            document.ballot_measure_slug = document.ballot_measure.slug
 
     @classmethod
     def make_slug(cls, **kwargs):
