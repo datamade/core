@@ -418,6 +418,7 @@ class BallotChoice(TimestampMixin):
 class BallotMeasure(BallotChoice, DynamicDocument):
     full_name = StringField(max_length=200)
     value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
+    slug = StringField(max_length=300, required=True, help_text="Slugified name for easier querying and obj repr")
 
     @property
     def name(self):
@@ -438,6 +439,9 @@ class BallotMeasure(BallotChoice, DynamicDocument):
 
         if not document.slug:
             document.slug = cls.make_slug(full_name=document.full_name)
+
+signals.pre_save.connect(TimestampMixin.update_timestamp, sender=BallotMeasure)
+signals.post_init.connect(BallotMeasure.post_init, sender=BallotMeasure)
 
 
 class Candidate(BallotChoice, DynamicDocument):
@@ -499,6 +503,9 @@ class Candidate(BallotChoice, DynamicDocument):
     def make_slug(cls, **kwargs):
         return slugify(kwargs.get('full_name'), '-')
 
+signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Candidate)
+signals.post_init.connect(Candidate.post_init, sender=Candidate)
+
 # for judicial retention
 class Retention(Candidate, DynamicDocument):
     value = StringField(required=True, choices=VOTE_VALUE_CHOICES)
@@ -508,8 +515,8 @@ class Retention(Candidate, DynamicDocument):
         return (self.election_id, self.contest_slug, self.slug, self.value)
 
 
-signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Candidate)
-signals.post_init.connect(Candidate.post_init, sender=Candidate)
+signals.pre_save.connect(TimestampMixin.update_timestamp, sender=Retention)
+signals.post_init.connect(Retention.post_init, sender=Retention)
 
 
 class Result(TimestampMixin, DynamicDocument):
